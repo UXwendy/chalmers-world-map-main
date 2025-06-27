@@ -1417,9 +1417,7 @@
             // Sentiment-filter
             document.querySelectorAll('.sentiment-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    // Remove active from all, add to clicked
-                    document.querySelectorAll('.sentiment-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
+                    e.target.classList.toggle('active');
                     applyFilters();
                 });
             });
@@ -1473,7 +1471,7 @@
         function applyFilters() {
             if (!geojsonData) return;
 
-            // Hämta filtervärkten
+            // Hämta filtervärden
             const activeSentiments = Array.from(document.querySelectorAll('.sentiment-btn.active'))
                 .map(btn => btn.dataset.sentiment);
             
@@ -1486,8 +1484,8 @@
             const filtered = geojsonData.features.filter(feature => {
                 const props = feature.properties || {};
                 
-                // Sentiment-filter
-                if (!activeSentiments.includes(props.sentiment || 'neutral')) {
+                // Sentiment-filter: if none selected, show all
+                if (activeSentiments.length > 0 && !activeSentiments.includes(props.sentiment || 'neutral')) {
                     return false;
                 }
                 
@@ -1510,46 +1508,40 @@
                 }
                 
                 // Tidsfilter
-                if (currentTimeFilter !== 'all' && props.datetime) {
-                    try {
+                if (currentTimeFilter !== 'all') {
+                    const cutoffDateFn = timeFilters[currentTimeFilter];
+                    const cutoffDate = cutoffDateFn ? cutoffDateFn() : null;
+                    if (cutoffDate && props.datetime) {
                         const featureDate = new Date(props.datetime);
-                        const cutoffDate = timeFilters[currentTimeFilter]();
-                        if (featureDate < cutoffDate) {
+                        if (!isNaN(featureDate.getTime()) && featureDate < cutoffDate) {
                             return false;
                         }
-                    } catch (e) {
-                        // Om datum är ogiltigt, inkludera i resultatet
+                    }
+                    // If feature is missing datetime, exclude it from filtered results when a time filter is active
+                    if (cutoffDate && !props.datetime) {
+                        return false;
                     }
                 }
                 
                 // Datum-filter (manuellt datumintervall)
-                if ((startDate || endDate) && props.datetime) {
-                    try {
-                        const featureDate = new Date(props.datetime).toISOString().split('T')[0];
-                        if (startDate && featureDate < startDate) {
-                            return false;
-                        }
-                        if (endDate && featureDate > endDate) {
-                            return false;
-                        }
-                    } catch (e) {
-                        // Om datum är ogiltigt, inkludera i resultatet
+                if (startDate) {
+                    const featureDate = new Date(props.datetime);
+                    if (featureDate < new Date(startDate)) {
+                        return false;
                     }
                 }
-                
+                if (endDate) {
+                    const featureDate = new Date(props.datetime);
+                    if (featureDate > new Date(endDate)) {
+                        return false;
+                    }
+                }
                 return true;
             });
 
-            filteredData = {
-                type: 'FeatureCollection',
-                features: filtered
-            };
-
-            // Uppdatera karta
-            if (map) {
-                addDataToMap();
-                updateStatistics();
-            }
+            filteredData = { ...geojsonData, features: filtered };
+            updateStatistics();
+            addDataToMap();
         }
 
         // Uppdatera filter-alternativ
